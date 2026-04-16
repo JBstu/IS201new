@@ -1,0 +1,17 @@
+.my_bold {
+    font-weight: bolder;
+}
+.color_change_to_dark_red {
+    color: rgb(58, 4, 4);
+}
+.change_font_and_color {
+    font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+    color: #555555;
+}
+.underline_and_font {
+    font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+    text-decoration: underline;
+}
+.back_to_normal {
+    text-decoration: none;
+}

@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Retro Coin Collector</title>
+<style>
+    body {
+        background: black;
+        color: #fff;
+        font-family: "Courier New", monospace;
+        margin: 0;
+        padding: 0;
+    }
+
+    #header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background: #111;
+        border-bottom: 4px solid #555;
+        padding: 10px;
+        font-size: 20px;
+        color: cyan;
+        z-index: 1000;
+    }
+
+    #home-link {
+        float: right;
+        color: gold;
+        text-decoration: none;
+        font-weight: bold;
+        margin-right: 20px;
+    }
+
+    #home-link:hover {
+        color: orange;
+    }
+
+    h1, p {
+        margin-top: 80px;
+        text-align: center;
+    }
+
+    #game {
+        margin: 20px auto;
+        width: 400px;
+        height: 400px;
+        background: #222;
+        position: relative;
+        border: 4px solid #555;
+        image-rendering: pixelated;
+    }
+
+    .player, .coin, .guard, .wall, .boss {
+        width: 20px;
+        height: 20px;
+        position: absolute;
+    }
+
+    .player { background: #0f0; }
+    .coin { background: gold; }
+    .guard { background: red; }
+    .boss { background: magenta; }
+    .wall { background: #444; }
+
+    #message {
+        margin-top: 20px;
+        font-size: 24px;
+        color: cyan;
+        text-align: center;
+    }
+
+    #buttons {
+        text-align: center;
+        margin-top: 10px;
+    }
+
+    button {
+        background: #111;
+        color: gold;
+        border: 2px solid #555;
+        padding: 10px 20px;
+        font-family: "Courier New", monospace;
+        cursor: pointer;
+        margin: 5px;
+    }
+
+    button:hover {
+        background: #333;
+    }
+</style>
+</head>
+<body>
+
+<div id="header">
+    Retro Coin Collector
+    <a id="home-link" href="scratch.html">Back to Scratch Page</a>
+</div>
+
+<h1>Retro Coin Collector</h1>
+<p>Use the arrow keys to move. Collect all the coins while avoiding the guards to win.</p>
+<p>Each level will get harder. Good luck! ;&rpar;</p>
+
+<div id="game">
+    <div id="player" class="player"></div>
+</div>
+
+<div id="message"></div>
+<div id="buttons"></div>
+
+<script>
+/* ---------------- SOUND EFFECTS ---------------- */
+
+function playSound(type) {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(ctx.destination);
+
+    if (type === "coin") {
+        o.type = "square";
+        o.frequency.setValueAtTime(800, ctx.currentTime);
+        g.gain.setValueAtTime(0.2, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    }
+
+    if (type === "alert" || type === "charge") {
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(200, ctx.currentTime);
+        g.gain.setValueAtTime(0.3, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+    }
+
+    if (type === "caught") {
+        o.type = "triangle";
+        o.frequency.setValueAtTime(80, ctx.currentTime);
+        g.gain.setValueAtTime(0.4, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    }
+
+    if (type === "win") {
+        o.type = "square";
+        o.frequency.setValueAtTime(400, ctx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.3);
+        g.gain.setValueAtTime(0.2, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    }
+
+    o.start();
+    o.stop(ctx.currentTime + 0.5);
+}
+
+/* ---------------- GAME SETUP ---------------- */
+
+const game = document.getElementById("game");
+const player = document.getElementById("player");
+const message = document.getElementById("message");
+const buttons = document.getElementById("buttons");
+
+let playerX = 0;
+let playerY = 0;
+const size = 20;
+
+let coins = [];
+let guards = [];
+let walls = [];
+let boss = null;
+
+let currentLevel = 1;
+const maxLevel = 5;
+
+function isWallPosition(x, y) {
+    return walls.some(w => 
+        w.style.left === x + "px" && w.style.top === y + "px"
+    );
+}
+
+function randPos() {
+    return Math.floor(Math.random() * 20) * size;
+}
+
+/* ---------------- LEVEL DATA ---------------- */
+
+const levelData = {
+    1: {
+        walls: [
+            [100,100],[120,100],[140,100],[160,100],
+            [200,200],[200,220],[200,240]
+        ],
+        guards: [
+            {x: 300, y: 300, patrol: [[300,300],[300,260],[260,260],[260,300]]}
+        ],
+        coins: 5
+    },
+    2: {
+        walls: [
+            [60,60],[80,60],[100,60],[120,60],[140,60],
+            [140,80],[140,100],[140,120],
+            [200,200],[220,200],[240,200],[260,200],
+            [260,220],[260,240]
+        ],
+        guards: [
+            {x: 300, y: 300, patrol: [[300,300],[300,260],[260,260],[260,300]]},
+            {x: 60, y: 300, patrol: [[60,300],[100,300],[100,260],[60,260]]}
+        ],
+        coins: 5
+    },
+    3: {
+        walls: [
+            [40,40],[60,40],[80,40],[100,40],[120,40],[140,40],
+            [140,60],[140,80],[140,100],[140,120],
+            [200,200],[220,200],[240,200],[260,200],[280,200],
+            [280,220],[280,240],[280,260]
+        ],
+        guards: [
+            {x: 300, y: 300, patrol: [[300,300],[300,260],[260,260],[260,300]]},
+            {x: 60, y: 300, patrol: [[60,300],[100,300],[100,260],[60,260]]},
+            {x: 200, y: 60, patrol: [[200,60],[240,60],[240,100],[200,100]]}
+        ],
+        coins: 5
+    },
+    4: {
+        walls: [
+            [40,40],[60,40],[80,40],[100,40],[120,40],[140,40],[160,40],
+            [160,60],[160,80],[160,100],[160,120],[160,140],
+            [200,200],[220,200],[240,200],[260,200],[280,200],[300,200],
+            [300,220],[300,240],[300,260],[300,280]
+        ],
+        guards: [
+            {x: 300, y: 300, patrol: [[300,300],[300,260],[260,260],[260,300]]},
+            {x: 60, y: 300, patrol: [[60,300],[100,300],[100,260],[60,260]]},
+            {x: 200, y: 60, patrol: [[200,60],[240,60],[240,100],[200,100]]},
+            {x: 100, y: 200, patrol: [[100,200],[140,200],[140,240],[100,240]]}
+        ],
+        coins: 5
+    },
+    5: {
+        walls: [
+            [180,180],[200,180],[220,180],
+            [180,200],[220,200],
+            [180,220],[200,220],[220,220]
+        ],
+        boss: {
+            x: 300,
+            y: 300,
+            patrol: [[300,300],[300,60],[60,60],[60,300]]
+        },
+        coins: 3
+    }
+};
+
+/* ---------------- LEVEL LOADING ---------------- */
+
+function clearLevel() {
+    coins.forEach(c => c?.remove());
+    guards.forEach(g => g.el?.remove());
+    walls.forEach(w => w.remove());
+    if (boss) boss.el.remove();
+
+    coins = [];
+    guards = [];
+    walls = [];
+    boss = null;
+
+    message.textContent = "";
+    buttons.innerHTML = "";
+}
+
+function loadLevel(level) {
+    clearLevel();
+
+    playerX = 0;
+    playerY = 0;
+    updatePlayer();
+
+    const data = levelData[level];
+
+    data.walls.forEach(pos => {
+        const w = document.createElement("div");
+        w.classList.add("wall");
+        w.style.left = pos[0] + "px";
+        w.style.top = pos[1] + "px";
+        game.appendChild(w);
+        walls.push(w);
+    });
+
+    for (let i = 0; i < data.coins; i++) {
+    let cx, cy;
+
+    // Keep generating positions until we find one that isn't a wall
+    do {
+        cx = randPos();
+        cy = randPos();
+    } while (isWallPosition(cx, cy));
+
+    const coin = document.createElement("div");
+    coin.classList.add("coin");
+    coin.style.left = cx + "px";
+    coin.style.top = cy + "px";
+    game.appendChild(coin);
+    coins.push(coin);
+}
+
+
+    if (data.guards) {
+        data.guards.forEach(g => {
+            const guard = document.createElement("div");
+            guard.classList.add("guard");
+            guard.style.left = g.x + "px";
+            guard.style.top = g.y + "px";
+            game.appendChild(guard);
+
+            guards.push({
+                el: guard,
+                patrol: g.patrol,
+                patrolIndex: 0
+            });
+        });
+    }
+
+    if (data.boss) {
+        const b = document.createElement("div");
+        b.classList.add("boss");
+        b.style.left = data.boss.x + "px";
+        b.style.top = data.boss.y + "px";
+        game.appendChild(b);
+
+        boss = {
+            el: b,
+            patrol: data.boss.patrol,
+            patrolIndex: 0,
+            charging: false
+        };
+    }
+}
+
+/* ---------------- MOVEMENT ---------------- */
+
+function updatePlayer() {
+    player.style.left = playerX + "px";
+    player.style.top = playerY + "px";
+}
+
+function blocked(x, y) {
+    if (x < 0 || x > 380 || y < 0 || y > 380) return true;
+    return walls.some(w => w.style.left === x + "px" && w.style.top === y + "px");
+}
+
+function checkCollision(a, b) {
+    return a.style.left === b.style.left && a.style.top === b.style.top;
+}
+
+document.addEventListener("keydown", (e) => {
+    if (message.textContent !== "") return;
+
+    let newX = playerX;
+    let newY = playerY;
+
+    if (e.key === "ArrowUp") newY -= size;
+    if (e.key === "ArrowDown") newY += size;
+    if (e.key === "ArrowLeft") newX -= size;
+    if (e.key === "ArrowRight") newX += size;
+
+    if (!blocked(newX, newY)) {
+        playerX = newX;
+        playerY = newY;
+    }
+
+    updatePlayer();
+
+    coins.forEach((coin, i) => {
+        if (coin && checkCollision(player, coin)) {
+            playSound("coin");
+            coin.remove();
+            coins[i] = null;
+        }
+    });
+
+    if (coins.every(c => c === null)) {
+        if (currentLevel === 5) {
+            playSound("win");
+            message.textContent = "YOU DEFEATED THE BOSS!";
+            buttons.innerHTML = `<button onclick="restartGame()">Play Again</button>`;
+        } else {
+            playSound("win");
+            message.textContent = "LEVEL COMPLETE!";
+            buttons.innerHTML = `
+                <button onclick="restartLevel()">Restart Level</button>
+                <button onclick="nextLevel()">Next Level</button>
+            `;
+        }
+    }
+});
+
+/* ---------------- GUARD AI ---------------- */
+
+function moveGuards() {
+    if (message.textContent !== "") return;
+
+    guards.forEach(g => {
+        const guard = g.el;
+        let gx = parseInt(guard.style.left);
+        let gy = parseInt(guard.style.top);
+
+        const dx = playerX - gx;
+        const dy = playerY - gy;
+
+        if (Math.abs(dx) <= 40 && Math.abs(dy) <= 40) {
+            playSound("alert");
+
+            let stepX = dx === 0 ? 0 : (dx > 0 ? size : -size);
+            let stepY = dy === 0 ? 0 : (dy > 0 ? size : -size);
+
+            const newX = gx + stepX;
+            const newY = gy + stepY;
+
+            if (!blocked(newX, newY)) {
+                guard.style.left = newX + "px";
+                guard.style.top = newY + "px";
+            }
+        } else {
+            const [tx, ty] = g.patrol[g.patrolIndex];
+            if (gx === tx && gy === ty) {
+                g.patrolIndex = (g.patrolIndex + 1) % g.patrol.length;
+            }
+            const [nx, ny] = g.patrol[g.patrolIndex];
+
+            let stepX = gx < nx ? size : gx > nx ? -size : 0;
+            let stepY = gy < ny ? size : gy > ny ? -size : 0;
+
+            const newX = gx + stepX;
+            const newY = gy + stepY;
+
+            if (!blocked(newX, newY)) {
+                guard.style.left = newX + "px";
+                guard.style.top = newY + "px";
+            }
+        }
+
+        if (checkCollision(player, guard)) {
+            playSound("caught");
+            message.textContent = "YOU WERE CAUGHT!";
+            buttons.innerHTML = `<button onclick="restartLevel()">Restart Level</button>`;
+        }
+    });
+}
+
+/* ---------------- BOSS AI ---------------- */
+
+function moveBoss() {
+    if (!boss || message.textContent !== "") return;
+
+    const b = boss.el;
+    let bx = parseInt(b.style.left);
+    let by = parseInt(b.style.top);
+
+    const dx = playerX - bx;
+    const dy = playerY - by;
+
+    if (Math.abs(dx) <= 80 && Math.abs(dy) <= 80) {
+        if (!boss.charging) {
+            playSound("charge");
+            boss.charging = true;
+        }
+
+        let stepX = dx === 0 ? 0 : (dx > 0 ? size * 2 : -size * 2);
+        let stepY = dy === 0 ? 0 : (dy > 0 ? size * 2 : -size * 2);
+
+        const newX = bx + stepX;
+        const newY = by + stepY;
+
+        if (!blocked(newX, newY)) {
+            b.style.left = newX + "px";
+            b.style.top = newY + "px";
+        } else {
+            boss.charging = false;
+        }
+    } else {
+        boss.charging = false;
+
+        const [tx, ty] = boss.patrol[boss.patrolIndex];
+        if (bx === tx && by === ty) {
+            boss.patrolIndex = (boss.patrolIndex + 1) % boss.patrol.length;
+        }
+        const [nx, ny] = boss.patrol[boss.patrolIndex];
+
+        let stepX = bx < nx ? size : bx > nx ? -size : 0;
+        let stepY = by < ny ? size : by > ny ? -size : 0;
+
+        const newX = bx + stepX;
+        const newY = by + stepY;
+
+        if (!blocked(newX, newY)) {
+            b.style.left = newX + "px";
+            b.style.top = newY + "px";
+        }
+    }
+
+    if (checkCollision(player, b)) {
+        playSound("caught");
+        message.textContent = "THE BOSS GOT YOU!";
+        buttons.innerHTML = `<button onclick="restartLevel()">Restart Level</button>`;
+    }
+}
+
+/* ---------------- GAME LOOP ---------------- */
+
+setInterval(moveGuards, 300);
+setInterval(moveBoss, 250);
+
+/* ---------------- BUTTONS ---------------- */
+
+function restartLevel() {
+    loadLevel(currentLevel);
+}
+
+function nextLevel() {
+    currentLevel++;
+    loadLevel(currentLevel);
+}
+
+function restartGame() {
+    currentLevel = 1;
+    loadLevel(1);
+}
+
+loadLevel(1);
+</script>
+
+</body>
+</html>
